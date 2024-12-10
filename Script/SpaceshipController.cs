@@ -1,81 +1,101 @@
 using UnityEngine;
+using UnityEngine.UI;
 
-// Classe que controla os movimentos básicos de uma nave espacial, com teclas configuráveis
 public class SpaceshipController : MonoBehaviour
 {
-    // Velocidade normal da nave ao mover-se para frente ou para trás
-    public float speed = 10f;
-
-    // Multiplicador de velocidade para o modo "boost" (quando o jogador pressiona a tecla de boost)
-    public float boostMultiplier = 2f;
-
-    // Velocidade de rotação da nave (em graus por segundo)
+    // Parâmetros gerais da nave
+    public float maxSpeed = 100f;
+    public float accelerationRate = 25f;
+    public float decelerationRate = 15f;
+    public float brakeForce = 50f;
+    public float turboMultiplier = 2f;
+    public float handbrakeMultiplier = 2f;
     public float rotationSpeed = 100f;
-
-    // Velocidade de movimento vertical (para subir ou descer)
     public float verticalSpeed = 5f;
+    public float sidewaysSpeed = 25f;
 
-    // Teclas configuráveis para os movimentos
+    private float currentSpeed = 0f;
+
+    // Referência ao texto na UI
+    public Text speedLabel;
+
     public KeyCode moveForwardKey = KeyCode.W;
-    public KeyCode moveBackwardKey = KeyCode.S;
+    public KeyCode brakeKey = KeyCode.S;
+    public KeyCode turboKey = KeyCode.Space;
     public KeyCode rotateLeftKey = KeyCode.A;
     public KeyCode rotateRightKey = KeyCode.D;
     public KeyCode moveUpKey = KeyCode.LeftShift;
     public KeyCode moveDownKey = KeyCode.LeftControl;
-    public KeyCode boostKey = KeyCode.Space;
 
-    // Função chamada a cada frame, usada para atualizar a lógica de movimento da nave
     void Update()
     {
-        // Inicializa a velocidade atual da nave com o valor padrão
-        float currentSpeed = speed;
+        HandleMovement();
+        UpdateSpeedLabel();
+        AdjustNearCelestialBodies();
+    }
 
-        // Verifica se a tecla de boost está pressionada para aplicar o boost de velocidade
-        if (Input.GetKey(boostKey))
+    private void HandleMovement()
+    {
+        if (Input.GetKey(moveForwardKey))
         {
-            currentSpeed *= boostMultiplier; // Multiplica a velocidade normal pelo fator de boost
+            float boost = Input.GetKey(turboKey) ? turboMultiplier : 1f;
+            currentSpeed += accelerationRate * boost * Time.deltaTime;
+        }
+        else
+        {
+            currentSpeed -= decelerationRate * Time.deltaTime;
         }
 
-        // Movimentos para frente e para trás
-        float move = 0f;
-        if (Input.GetKey(moveForwardKey)) // Se a tecla de mover para frente está pressionada
+        if (Input.GetKey(brakeKey))
         {
-            move = currentSpeed * Time.deltaTime;
-        }
-        else if (Input.GetKey(moveBackwardKey)) // Se a tecla de mover para trás está pressionada
-        {
-            move = -currentSpeed * Time.deltaTime;
+            float handbrake = Input.GetKey(turboKey) ? handbrakeMultiplier : 1f;
+            currentSpeed -= brakeForce * handbrake * Time.deltaTime;
         }
 
-        // Rotação para esquerda e direita
+        currentSpeed = Mathf.Clamp(currentSpeed, 0, maxSpeed);
+        transform.Translate(Vector3.forward * currentSpeed * Time.deltaTime);
+
         float rotate = 0f;
-        if (Input.GetKey(rotateLeftKey)) // Se a tecla de girar para a esquerda está pressionada
-        {
-            rotate = -rotationSpeed * Time.deltaTime;
-        }
-        else if (Input.GetKey(rotateRightKey)) // Se a tecla de girar para a direita está pressionada
-        {
-            rotate = rotationSpeed * Time.deltaTime;
-        }
-
-        // Movimentos verticais (subir e descer)
-        float verticalMove = 0f;
-        if (Input.GetKey(moveUpKey)) // Se a tecla de subir está pressionada
-        {
-            verticalMove = verticalSpeed * Time.deltaTime;
-        }
-        else if (Input.GetKey(moveDownKey)) // Se a tecla de descer está pressionada
-        {
-            verticalMove = -verticalSpeed * Time.deltaTime;
-        }
-
-        // Aplica o movimento para frente ou para trás, em relação ao eixo Z local da nave
-        transform.Translate(Vector3.forward * move);
-
-        // Aplica a rotação da nave ao redor do eixo Y local (gira para a esquerda ou direita)
+        if (Input.GetKey(rotateLeftKey)) rotate = -rotationSpeed * Time.deltaTime;
+        if (Input.GetKey(rotateRightKey)) rotate = rotationSpeed * Time.deltaTime;
         transform.Rotate(Vector3.up * rotate);
 
-        // Aplica o movimento vertical, em relação ao eixo Y local da nave
+        float verticalMove = 0f;
+        if (Input.GetKey(moveUpKey)) verticalMove = verticalSpeed * Time.deltaTime;
+        if (Input.GetKey(moveDownKey)) verticalMove = -verticalSpeed * Time.deltaTime;
         transform.Translate(Vector3.up * verticalMove);
+
+        float sidewaysMove = 0f;
+        if (Input.GetKey(KeyCode.A)) sidewaysMove = -sidewaysSpeed * Time.deltaTime;
+        if (Input.GetKey(KeyCode.D)) sidewaysMove = sidewaysSpeed * Time.deltaTime;
+        transform.Translate(Vector3.right * sidewaysMove);
+    }
+
+    private void AdjustNearCelestialBodies()
+    {
+        foreach (var celestialBody in GameObject.FindGameObjectsWithTag("CelestialBody"))
+        {
+            GameObject body = celestialBody.transform.Find("Body").gameObject;
+            float radius = body.transform.localScale.x / 2;
+            float distanceToSurface = Vector3.Distance(transform.position, celestialBody.transform.position) - radius;
+            float gInfluence = 1.0f * radius;
+            float t = 1 - Mathf.Clamp01(distanceToSurface / gInfluence);
+
+            if (distanceToSurface < gInfluence)
+            {
+                Vector3 targetUp = (transform.position - celestialBody.transform.position).normalized;
+                Vector3 currentUp = Vector3.Lerp(transform.up, targetUp, t);
+                transform.LookAt(transform.position + transform.forward, currentUp);
+            }
+        }
+    }
+
+    // Atualiza o texto da velocidade na interface
+    private void UpdateSpeedLabel()
+    {
+        if (speedLabel != null)
+        {
+            speedLabel.text = $"Speed: {currentSpeed:F1} u/s";
+        }
     }
 }
